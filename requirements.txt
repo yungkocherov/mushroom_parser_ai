@@ -3,3 +3,9 @@ python-dotenv
 tqdm
 anthropic
 pandas
+plotly
+lightgbm
+scikit-learn
+statsmodels
+optuna
+pytrends
