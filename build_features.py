@@ -9,8 +9,8 @@ import os
 import numpy as np
 import pandas as pd
 
-INPUT_RAW      = "data/weather_raw.csv"
-INPUT_TRENDS   = "data/google_trends.csv"
+INPUT_RAW       = "data/weather_raw.csv"
+INPUT_TRENDS    = "data/google_trends.csv"
 OUTPUT_FEATURES = "data/weather_features.csv"
 
 
@@ -35,6 +35,13 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df["hot_day"]      = (T >= 20).astype(int)
     df["rain_day"]     = (P > 0.5).astype(int)
     df["heavy_rain"]   = (P > 10).astype(int)
+
+    # Лаги бинарных индикаторов (грибница реагирует с задержкой)
+    for lag in [1, 2, 3, 5, 7]:
+        df[f"warm_day_lag{lag}"] = df["warm_day"].shift(lag)
+        df[f"hot_day_lag{lag}"]  = df["hot_day"].shift(lag)
+        df[f"rain_day_lag{lag}"] = df["rain_day"].shift(lag)
+        df[f"heavy_rain_lag{lag}"] = df["heavy_rain"].shift(lag)
 
     # ── Лаги температуры (1–21 день) ─────────────────────────────────────────
     for lag in range(1, 22):
@@ -164,6 +171,17 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     for w in [5, 7, 10]:
         df[f"good_rain_then_warm_{w}d"] = (good_rain_past & (T >= 12)).astype(int)
 
+    # ── Лаги паттерна "дождь → тепло → грибы через N дней" ────────────────────
+    for rain_lag in [3, 5, 7, 10]:
+        base = df[f"rain{rain_lag}d_then_warm"]
+        for delay in [1, 2, 3, 5, 7]:
+            df[f"rain{rain_lag}d_then_warm_lag{delay}"] = base.shift(delay)
+
+    for w in [5, 7, 10]:
+        base = df[f"good_rain_then_warm_{w}d"]
+        for delay in [1, 2, 3, 5, 7]:
+            df[f"good_rain_then_warm_{w}d_lag{delay}"] = base.shift(delay)
+
     # ── Взаимодействия ────────────────────────────────────────────────────────
     df["temp_x_humidity"]  = T * H / 100
     df["temp_x_precip_7d"] = df["temp_mean_7d"] * df["precip_7d"]
@@ -211,15 +229,12 @@ def main():
 
     df_feat = add_features(df_raw)
 
-    # Google Trends — подключаем если файл есть
+    # Google Trends — подключаем если файл есть (не используется в модели, но сохраняем)
     if os.path.exists(INPUT_TRENDS):
         trends = pd.read_csv(INPUT_TRENDS, parse_dates=["date"])
         df_feat = df_feat.merge(trends, on="date", how="left")
-        # Для дат вне диапазона трендов — заполняем средним
         df_feat["vk_trend"] = df_feat["vk_trend"].fillna(df_feat["vk_trend"].mean()).round(1)
         print(f"Google Trends подключён: {trends['date'].min().date()} – {trends['date'].max().date()}")
-    else:
-        print(f"Google Trends не найден ({INPUT_TRENDS}). Запусти: python fetch_trends.py")
 
     os.makedirs("data", exist_ok=True)
     df_feat.to_csv(OUTPUT_FEATURES, index=False)

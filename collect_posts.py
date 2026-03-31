@@ -19,7 +19,7 @@ API_VERSION = "5.131"
 GROUP_DOMAIN = "grib_spb"
 BATCH_SIZE = 100          # макс. постов за один запрос
 DELAY = 0.35              # секунд между запросами (лимит VK: 3 req/s)
-YEARS_BACK = 6            # глубина сбора
+YEARS_BACK = 8            # глубина сбора (с 2018)
 
 OUTPUT_DIR = "data"
 OUTPUT_JSON = os.path.join(OUTPUT_DIR, "raw_posts.json")

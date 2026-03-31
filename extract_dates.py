@@ -318,6 +318,7 @@ def process_posts(use_llm: bool = False):
             "foray_date": foray_date,
             "date_source": source,
             "likes": post["likes"],
+            "views": post.get("views", 0),
             "photos": post["photos"],
             "text_preview": text[:200].replace("\n", " "),
         })

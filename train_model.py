@@ -16,7 +16,18 @@ OUTPUT_MODEL   = "data/model.lgb"
 OUTPUT_PREDS   = "data/predictions.csv"
 
 # Столбцы, которые не являются фичами
-NON_FEATURES = {"date", "report_count", "avg_likes", "total_photos"}
+NON_FEATURES = {
+    "date", "report_count", "mushroom_index", "mushroom_index_sm",
+    "audience_scale", "avg_likes", "total_photos", "avg_views",
+    "median_views", "audience_proxy", "vk_trend", "weekday_scale",
+    # Человеческий фактор (таргет уже нормализован)
+    "year", "weekday", "is_weekend", "is_holiday", "is_day_off", "long_weekend",
+    "day_of_month",
+    "is_around_20th_may", "is_around_20th_jun", "is_around_20th_jul",
+    "is_around_20th_aug", "is_around_20th_sep", "is_peak_window",
+    # Пиковые даты — артефакт группы, не биология
+    "days_to_aug20", "days_to_sep20", "days_to_peak", "season_gauss",
+}
 
 # Грибной сезон — апрель (4) — ноябрь (11)
 SEASON_MONTHS = range(4, 12)
@@ -29,14 +40,14 @@ def load_dataset() -> pd.DataFrame:
     weather = pd.read_csv(WEATHER_CSV, parse_dates=["date"])
     daily   = pd.read_csv(DAILY_CSV,   parse_dates=["date"])
 
-    merge_cols = ["date", "report_count"]
-    if "audience_proxy" in daily.columns:
-        merge_cols.append("audience_proxy")
+    merge_cols = ["date", "report_count", "mushroom_index", "mushroom_index_sm", "audience_scale"]
+    merge_cols = [c for c in merge_cols if c in daily.columns]
 
     df = weather.merge(daily[merge_cols], on="date", how="left")
     df["report_count"] = df["report_count"].fillna(0).astype(int)
-    if "audience_proxy" in df.columns:
-        df["audience_proxy"] = df["audience_proxy"].ffill().bfill().fillna(0)
+    df["mushroom_index"] = df["mushroom_index"].fillna(0)
+    df["mushroom_index_sm"] = df["mushroom_index_sm"].fillna(0)
+    df["audience_scale"] = df["audience_scale"].ffill().bfill().fillna(1.0)
 
     # Данные с 2020 года
     df = df[df["year"] >= 2020].reset_index(drop=True)
