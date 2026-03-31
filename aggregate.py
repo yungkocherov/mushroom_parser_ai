@@ -33,12 +33,33 @@ def aggregate():
         .agg(
             report_count=("id", "count"),
             avg_likes=("likes", "mean"),
+            avg_views=("views", "mean"),
+            median_views=("views", "median"),
             total_photos=("photos", "sum"),
         )
         .reset_index()
         .rename(columns={"foray_date": "date"})
         .sort_values("date")
     )
+
+    # Скользящая медиана просмотров (30 дней) — прокси размера аудитории
+    daily["audience_proxy"] = (
+        daily["median_views"]
+        .rolling(30, center=True, min_periods=7)
+        .median()
+        .round(0)
+    )
+    # Заполняем края
+    daily["audience_proxy"] = daily["audience_proxy"].bfill().ffill()
+
+    # Сглаживание аномальных дат (конкурсы/дайджесты на 20.08 и 20.09)
+    # Если report_count > 3× медианы окна ±3 дня — заменяем на медиану окна
+    rolling_median = daily["report_count"].rolling(7, center=True, min_periods=3).median()
+    is_spike = daily["report_count"] > rolling_median * 3
+    n_smoothed = is_spike.sum()
+    if n_smoothed > 0:
+        daily.loc[is_spike, "report_count"] = rolling_median[is_spike].astype(int)
+        print(f"\nСглажено аномальных дней: {n_smoothed}")
 
     # Добавляем вспомогательные колонки
     daily["year"] = daily["date"].dt.year

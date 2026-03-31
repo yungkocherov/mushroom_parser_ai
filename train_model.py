@@ -29,11 +29,14 @@ def load_dataset() -> pd.DataFrame:
     weather = pd.read_csv(WEATHER_CSV, parse_dates=["date"])
     daily   = pd.read_csv(DAILY_CSV,   parse_dates=["date"])
 
-    df = weather.merge(
-        daily[["date", "report_count"]],
-        on="date", how="left"
-    )
+    merge_cols = ["date", "report_count"]
+    if "audience_proxy" in daily.columns:
+        merge_cols.append("audience_proxy")
+
+    df = weather.merge(daily[merge_cols], on="date", how="left")
     df["report_count"] = df["report_count"].fillna(0).astype(int)
+    if "audience_proxy" in df.columns:
+        df["audience_proxy"] = df["audience_proxy"].ffill().bfill().fillna(0)
 
     # Данные с 2020 года
     df = df[df["year"] >= 2020].reset_index(drop=True)
