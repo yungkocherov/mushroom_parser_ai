@@ -171,10 +171,32 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df["gdd14_x_precip14"] = df["gdd_14d"]        * df["precip_14d"]
 
     # ── Фурье-признаки сезонности ─────────────────────────────────────────────
-    df["sin_doy"]  = np.sin(2 * np.pi * df["day_of_year"] / 365)
-    df["cos_doy"]  = np.cos(2 * np.pi * df["day_of_year"] / 365)
-    df["sin_doy2"] = np.sin(4 * np.pi * df["day_of_year"] / 365)
-    df["cos_doy2"] = np.cos(4 * np.pi * df["day_of_year"] / 365)
+    doy = df["day_of_year"]
+    for k in range(1, 6):  # 5 гармоник — ловят и плавные и резкие сезонные паттерны
+        df[f"sin_doy{k}"] = np.sin(2 * k * np.pi * doy / 365)
+        df[f"cos_doy{k}"] = np.cos(2 * k * np.pi * doy / 365)
+
+    # ── Дополнительные календарные фичи ──────────────────────────────────────
+    df["day_of_month"]  = df["date"].dt.day
+    df["week_of_year"]  = df["date"].dt.isocalendar().week.astype(int)
+
+    # Расстояние до пиковых дат сезона (20 авг = doy 232, 20 сен = doy 263)
+    df["days_to_aug20"] = (doy - 232).abs()
+    df["days_to_sep20"] = (doy - 263).abs()
+    df["days_to_peak"]  = df[["days_to_aug20", "days_to_sep20"]].min(axis=1)
+
+    # Интеракция: 20-е число в пиковые месяцы
+    dom = df["day_of_month"]
+    for m, name in [(5, 'may'), (6, 'jun'), (7, 'jul'), (8, 'aug'), (9, 'sep')]:
+        df[f"is_around_20th_{name}"] = ((df["month"] == m) & (dom >= 18) & (dom <= 22)).astype(int)
+    df["is_peak_window"] = (
+        df["is_around_20th_may"] | df["is_around_20th_jun"] | df["is_around_20th_jul"] |
+        df["is_around_20th_aug"] | df["is_around_20th_sep"]
+    ).astype(int)
+
+    # Грибной сезон: апрель–ноябрь (мягкий индикатор через гауссиану)
+    # Центр = doy 240 (конец августа), sigma = 60 дней
+    df["season_gauss"] = np.exp(-0.5 * ((doy - 240) / 60) ** 2).round(4)
 
     return df
 
