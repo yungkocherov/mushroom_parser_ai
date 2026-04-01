@@ -40,6 +40,7 @@ SKIP_PHOTO_RE = re.compile("|".join([
     r"правил[аоы]\s+(груп|сообщ)",# правила группы
     r"клещ|змея|змей|медвед",     # опасности леса
     r"ягод[аыу]|клюкв|брусник|черник|морошк", # ягоды
+    r"рыбалк|рыб[аыу]|щук[аиу]|окун[ьяей]|удочк|спиннинг|улов[а-я]*\s+рыб|карас[ьяей]|лещ", # рыбалка
     # Пустые походы
     r"ничего\s+не\s+наш",
     r"не\s+наш[ёел][иа]?\s+(ни|гриб)",
@@ -61,15 +62,14 @@ SKIP_PHOTO_RE = re.compile("|".join([
     r"день\s+защитника",
 ]), re.IGNORECASE)
 
-PROMPT = """What mushrooms are in this photo? Identify species and estimate total count.
-Reply ONLY with JSON array:
-[{"species": "name", "count": number}]
-If no mushrooms visible: [{"species": "none", "count": 0}]
-Counting: full basket=30-50, handful=5-10, individual=count exactly. Never write 0 if you see mushrooms."""
+PROMPT = """Mushroom species and count? JSON only: [{"species":"name","count":N}]
+No mushrooms: [{"species":"none","count":0}]
+Basket=30-50, handful=5-10.
+Common species: Boletus edulis, Cantharellus cibarius, Cantharellus tubaeformis, Armillaria, Suillus, Leccinum, Morchella, Gyromitra, Pleurotus, Russula, Lactarius"""
 
 
 def download_photo(url: str, timeout: int = 15) -> bytes | None:
-    """Скачивает фото по URL, возвращает bytes."""
+    """Скачивает фото по URL."""
     try:
         resp = requests.get(url, timeout=timeout)
         if resp.status_code == 200 and len(resp.content) > 1000:
@@ -90,24 +90,33 @@ def ask_ollama(image_bytes: bytes) -> dict | None:
             "images": [img_b64],
             "stream": False,
             "options": {"temperature": 0.1},
-        }, timeout=60)
+        }, timeout=180)
 
         if resp.status_code != 200:
             return None
 
         text = resp.json().get("response", "").strip()
 
+        # Фиксим невалидный JSON: "count": 30-50 → "count": "30-50"
+        text = re.sub(r'"count"\s*:\s*(\d+)\s*-\s*(\d+)', r'"count": "\1-\2"', text)
+
         # Парсим JSON массив из ответа
         # LLM может обернуть в ```json ... ``` или добавить текст
         json_match = re.search(r"\[.*\]", text, re.DOTALL)
         if json_match:
-            parsed = json.loads(json_match.group())
-            if isinstance(parsed, list):
-                return parsed
+            try:
+                parsed = json.loads(json_match.group())
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
         # Fallback: одиночный объект
         json_match = re.search(r"\{[^}]+\}", text)
         if json_match:
-            return [json.loads(json_match.group())]
+            try:
+                return [json.loads(json_match.group())]
+            except json.JSONDecodeError:
+                pass
         return None
 
     except Exception as e:
@@ -157,7 +166,6 @@ def main():
             skipped_text += 1
             continue
         if len(urls) >= 2:
-            # Первое (красивые грибы) + последнее (полный улов) → возьмём max
             to_process.append({
                 "id": pid,
                 "urls": [urls[0], urls[-1]],
@@ -196,27 +204,63 @@ def main():
     from concurrent.futures import ThreadPoolExecutor, as_completed
     N_WORKERS = 3  # параллельных запросов к Ollama
 
-    # Маппинг латинских названий → русские
+    # Маппинг названий → стандартные русские
     SPECIES_MAP = {
+        # Латинские
         "boletus edulis": "белый", "boletus": "белый",
         "cantharellus cibarius": "лисичка", "cantharellus": "лисичка",
-        "armillaria": "опёнок", "honey fungus": "опёнок",
-        "suillus": "маслёнок", "suillus luteus": "маслёнок",
+        "cantharellus tubaeformis": "лисичка_трубчатая", "craterellus tubaeformis": "лисичка_трубчатая",
+        "tubular chanterelle": "лисичка_трубчатая", "winter chanterelle": "лисичка_трубчатая",
+        "yellowfoot": "лисичка_трубчатая", "craterellus": "лисичка_трубчатая",
+        "armillaria": "опёнок", "armillaria mellea": "опёнок", "honey fungus": "опёнок",
+        "suillus": "маслёнок", "suillus luteus": "маслёнок", "suillus granulatus": "маслёнок",
         "leccinum aurantiacum": "подосиновик", "leccinum": "подосиновик",
-        "orange birch bolete": "подосиновик",
-        "birch bolete": "подберёзовик",
-        "morchella": "сморчок", "morel": "сморчок",
+        "leccinum scabrum": "подберёзовик", "leccinum versipelle": "подосиновик",
+        "leccinum vulpinum": "подосиновик", "leccinum albostipitatum": "подосиновик",
+        "orange birch bolete": "подосиновик", "birch bolete": "подберёзовик",
+        "red-capped scaber stalk": "подосиновик", "orange cap boletus": "подосиновик",
+        "morchella": "сморчок", "morchella esculenta": "сморчок", "morel": "сморчок",
         "gyromitra": "строчок", "gyromitra esculenta": "строчок",
         "verpa": "сморчковая_шапочка", "verpa bohemica": "сморчковая_шапочка",
         "lactarius deliciosus": "рыжик", "lactarius": "рыжик",
-        "lactifluus": "груздь",
-        "xerocomus": "моховик", "xerocomellus": "моховик",
+        "lactifluus": "груздь", "lactarius resimus": "груздь",
+        "xerocomus": "моховик", "xerocomellus": "моховик", "xerocomellus chrysenteron": "моховик",
         "russula": "сыроежка",
-        "none": "нет_грибов", "unknown": "другой",
+        "pholiota": "опёнок", "kuehneromyces": "опёнок",
+        "pleurotus": "вешенка", "pleurotus ostreatus": "вешенка", "oyster mushroom": "вешенка",
+        "chanterelle": "лисичка", "porcini": "белый", "cep": "белый",
+        "penny bun": "белый", "king bolete": "белый",
+        # Русские (модель иногда отвечает по-русски)
+        "белый": "белый", "белый гриб": "белый", "боровик": "белый",
+        "лисичка": "лисичка", "лисички": "лисичка",
+        "трубчатая лисичка": "лисичка_трубчатая", "лисичка трубчатая": "лисичка_трубчатая",
+        "опёнок": "опёнок", "опята": "опёнок", "опенок": "опёнок",
+        "маслёнок": "маслёнок", "маслята": "маслёнок", "масленок": "маслёнок",
+        "подосиновик": "подосиновик", "подосиновики": "подосиновик",
+        "подберёзовик": "подберёзовик", "подберезовик": "подберёзовик",
+        "сморчок": "сморчок", "сморчки": "сморчок",
+        "строчок": "строчок", "строчки": "строчок",
+        "сморчковая шапочка": "сморчковая_шапочка", "шапочка": "сморчковая_шапочка",
+        "рыжик": "рыжик", "рыжики": "рыжик",
+        "груздь": "груздь", "грузди": "груздь",
+        "моховик": "моховик", "моховики": "моховик",
+        "сыроежка": "сыроежка", "сыроежки": "сыроежка",
+        "козляк": "козляк",
+        "волнушка": "волнушка", "волнушки": "волнушка",
+        "свинушка": "свинушка",
+        "горькушка": "горькушка",
+        "вешенка": "вешенка", "вёшенка": "вешенка",
+        # Служебные
+        "none": "нет_грибов", "unknown": "другой", "другой": "другой",
+        "нет_грибов": "нет_грибов", "нет грибов": "нет_грибов",
     }
 
     def normalize_species(name):
         return SPECIES_MAP.get(name.lower().strip(), "другой")
+
+    import threading
+    last_result_lock = threading.Lock()
+    last_result = {"url": "", "answer": "", "time": 0}
 
     def process_one(post):
         all_results = {}  # species → sum count
@@ -228,6 +272,10 @@ def main():
             result = ask_ollama(img)
             if result is None:
                 continue
+            # Сохраняем для отображения
+            with last_result_lock:
+                last_result["url"] = url
+                last_result["answer"] = str(result)[:150]
             for item in result:
                 sp = normalize_species(item.get("species", ""))
                 cnt = item.get("count", 0)
@@ -243,8 +291,8 @@ def main():
                 except (ValueError, TypeError):
                     cnt = 0
                 cnt = min(cnt, 100)  # клип
-                # Суммируем дубли (две корзины одного вида)
-                all_results[sp] = all_results.get(sp, 0) + cnt
+                # Берём максимум по виду (разные ракурсы тех же грибов)
+                all_results[sp] = max(all_results.get(sp, 0), cnt)
 
         if not all_results:
             return post["id"], [{"species": "ошибка", "count": 0}]
@@ -271,6 +319,12 @@ def main():
                 if isinstance(result, dict) and result.get("error"):
                     errors += 1
                 pbar.update(1)
+
+                # Каждые 20 фото — показываем последний результат
+                if pbar.n % 20 == 0:
+                    with last_result_lock:
+                        tqdm.write(f"  >> {last_result['answer']}")
+                        tqdm.write(f"     {last_result['url']}")
 
             batch_start += BATCH
 
