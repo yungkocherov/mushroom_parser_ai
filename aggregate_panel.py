@@ -21,22 +21,37 @@ INPUT_PHOTOS   = "data/photo_species.csv"
 INPUT_WEATHER  = "data/weather_features.csv"
 OUTPUT_PANEL   = "data/panel.csv"
 
-# Виды, которые моделируем (остальные → "другой")
-TARGET_SPECIES = [
-    "белый", "лисичка", "опёнок", "маслёнок",
-    "подосиновик", "подберёзовик", "сморчок",
-    "сморчковая_шапочка", "рыжик", "груздь",
-    "моховик",
-]
+# Группировка видов в классы для панельной модели
+SPECIES_GROUPS = {
+    # Болетовые (трубчатые)
+    "болетовые": ["белый", "подосиновик", "подберёзовик", "моховик", "маслёнок", "козляк"],
+    # Лисичковые
+    "лисичковые": ["лисичка", "лисичка_трубчатая"],
+    # Весенние
+    "весенние": ["сморчок", "сморчковая_шапочка", "строчок"],
+    # Опята
+    "опята": ["опёнок"],
+    # Вешенки
+    "вешенки": ["вешенка"],
+}
 
-SKIP_SPECIES = {"не_фото_грибов", "ошибка", "другой", ""}
+# Обратный маппинг: вид → группа
+SPECIES_TO_GROUP = {}
+for group, species_list in SPECIES_GROUPS.items():
+    for sp in species_list:
+        SPECIES_TO_GROUP[sp] = group
+
+# Все группы для панели
+TARGET_GROUPS = list(SPECIES_GROUPS.keys())
+
+SKIP_SPECIES = {"нет_грибов", "не_фото_грибов", "ошибка", "другой", ""}
 
 # Зимние месяцы — обнуляем
 WINTER_MONTHS = {11, 12, 1, 2, 3}
 
 
 def load_photo_counts() -> pd.DataFrame:
-    """Загружает результаты фото-классификации, джойнит с датами."""
+    """Загружает результаты фото-классификации, джойнит с датами, группирует виды."""
     photos = pd.read_csv(INPUT_PHOTOS)
     posts = pd.read_csv(INPUT_POSTS, parse_dates=["date_posted", "foray_date"])
 
@@ -51,34 +66,41 @@ def load_photo_counts() -> pd.DataFrame:
     # Убираем нерелевантные
     photos = photos[~photos["photo_species"].isin(SKIP_SPECIES)]
 
-    # Нормализуем виды: редкие → "другой"
-    photos.loc[~photos["photo_species"].isin(TARGET_SPECIES), "photo_species"] = "другой"
+    # Маппим вид → группа. Виды вне групп → пропускаем
+    photos["group"] = photos["photo_species"].map(SPECIES_TO_GROUP)
+    unmapped = photos["group"].isna().sum()
+    if unmapped > 0:
+        print(f"  Виды без группы (пропущены): {unmapped}")
+        # Показываем какие именно
+        unknown = photos.loc[photos["group"].isna(), "photo_species"].value_counts().head(10)
+        for sp, cnt in unknown.items():
+            print(f"    {sp}: {cnt}")
+    photos = photos.dropna(subset=["group"])
 
-    return photos[["foray_date", "photo_species", "photo_count"]]
+    return photos[["foray_date", "group", "photo_count"]].rename(columns={"group": "species"})
 
 
 def build_panel(photos: pd.DataFrame) -> pd.DataFrame:
-    """Строит панель (дата × вид) с суммарным количеством."""
+    """Строит панель (дата × группа) с суммарным количеством."""
 
-    # Агрегируем: сумма грибов по (дата, вид)
+    # Агрегируем: сумма грибов по (дата, группа)
     daily_species = (
-        photos.groupby(["foray_date", "photo_species"])["photo_count"]
+        photos.groupby(["foray_date", "species"])["photo_count"]
         .sum()
         .reset_index()
         .rename(columns={
             "foray_date": "date",
-            "photo_species": "species",
             "photo_count": "mushroom_count",
         })
     )
 
-    # Создаём полную сетку: все даты × все виды
+    # Создаём полную сетку: все даты × все группы
     date_range = pd.date_range(
         daily_species["date"].min(),
         daily_species["date"].max(),
         freq="D",
     )
-    all_species = TARGET_SPECIES + ["другой"]
+    all_species = TARGET_GROUPS
     grid = pd.MultiIndex.from_product(
         [date_range, all_species],
         names=["date", "species"],
