@@ -1,0 +1,30 @@
+cities:
+  spb:
+    vk_group: "grib_spb"
+    city_name: "Санкт-Петербург"
+    lat: 59.9343
+    lon: 30.3351
+    timezone: "Europe/Moscow"
+    years_back: 8
+
+  # moscow:
+  #   vk_group: "griby_moscow"
+  #   city_name: "Москва"
+  #   lat: 55.7558
+  #   lon: 37.6173
+  #   timezone: "Europe/Moscow"
+  #   years_back: 5
+
+defaults:
+  lm_studio_url: "http://localhost:1234/v1/chat/completions"
+  lm_studio_model: "google/gemma-3-12b"
+  optuna_trials: 150
+  cv_years: [2023, 2024, 2025]
+  test_year: 2025
+  n_workers: 4
+
+group_seasons:
+  болетовые: [6, 7, 8, 9, 10]
+  лисичковые: [6, 7, 8, 9, 10, 11]
+  весенние: [4, 5]
+  опята: [6, 7, 8, 9, 10]
