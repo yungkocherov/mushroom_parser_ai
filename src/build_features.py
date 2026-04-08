@@ -9,9 +9,8 @@ import os
 import numpy as np
 import pandas as pd
 
-INPUT_RAW       = "data/weather_raw.csv"
-INPUT_TRENDS    = "data/google_trends.csv"
-OUTPUT_FEATURES = "data/weather_features.csv"
+INPUT_RAW       = None
+OUTPUT_FEATURES = None
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -219,7 +218,16 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def main():
+def main(city_config=None, app_config=None):
+    global INPUT_RAW, OUTPUT_FEATURES
+
+    if city_config:
+        INPUT_RAW       = city_config.path("weather_raw.csv")
+        OUTPUT_FEATURES = city_config.path("weather_features.csv")
+    else:
+        INPUT_RAW       = INPUT_RAW or "data/weather_raw.csv"
+        OUTPUT_FEATURES = OUTPUT_FEATURES or "data/weather_features.csv"
+
     if not os.path.exists(INPUT_RAW):
         print(f"Файл {INPUT_RAW} не найден. Сначала запусти: python fetch_weather.py")
         return
@@ -229,14 +237,7 @@ def main():
 
     df_feat = add_features(df_raw)
 
-    # Google Trends — подключаем если файл есть (не используется в модели, но сохраняем)
-    if os.path.exists(INPUT_TRENDS):
-        trends = pd.read_csv(INPUT_TRENDS, parse_dates=["date"])
-        df_feat = df_feat.merge(trends, on="date", how="left")
-        df_feat["vk_trend"] = df_feat["vk_trend"].fillna(df_feat["vk_trend"].mean()).round(1)
-        print(f"Google Trends подключён: {trends['date'].min().date()} – {trends['date'].max().date()}")
-
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT_FEATURES), exist_ok=True)
     df_feat.to_csv(OUTPUT_FEATURES, index=False)
     print(f"Фичи сохранены: {OUTPUT_FEATURES} ({len(df_feat.columns)} колонок, {len(df_feat)} дней)")
 

@@ -19,20 +19,15 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-PANEL_CSV    = "data/panel.csv"
-OUTPUT_DIR   = "data"
-OUTPUT_PREDS = "data/panel_predictions.csv"
+PANEL_CSV    = None
+OUTPUT_DIR   = None
+OUTPUT_PREDS = None
 
 TARGET = "mushroom_count"
 TEST_YEAR = 2025
 
 # Сезон каждой группы — обучаем только на этих месяцах
-GROUP_SEASONS = {
-    "болетовые":              list(range(6, 11)),   # июнь-октябрь
-    "лисичковые":             list(range(6, 12)),   # июнь-ноябрь (обычные + трубчатые)
-    "весенние":               [4, 5],               # апрель-май
-    "опята":                  list(range(6, 11)),   # июнь-октябрь
-}
+GROUP_SEASONS = None
 
 # Фичи, исключённые из модели
 NON_FEATURES = {
@@ -51,11 +46,10 @@ NON_FEATURES = {
     "sin_doy4", "cos_doy4", "sin_doy5", "cos_doy5",
 }
 
-CV_YEARS = [2023, 2024, 2025]
-N_TRIALS = 150
+CV_YEARS = None
+N_TRIALS = None
 
-
-SELECTED_FEATURES_FILE = "data/selected_features.json"
+SELECTED_FEATURES_FILE = None
 
 
 def get_feature_cols(df, group=None):
@@ -220,6 +214,41 @@ def train_group(df_full, group, season_months, feature_cols):
     return final_model, importance, result
 
 
+def main(city_config=None, app_config=None):
+    global PANEL_CSV, OUTPUT_DIR, OUTPUT_PREDS, SELECTED_FEATURES_FILE
+    global GROUP_SEASONS, CV_YEARS, N_TRIALS, TEST_YEAR
+
+    if city_config:
+        PANEL_CSV              = city_config.path("panel.csv")
+        OUTPUT_DIR             = str(city_config.data_dir)
+        OUTPUT_PREDS           = city_config.path("panel_predictions.csv")
+        SELECTED_FEATURES_FILE = city_config.path("selected_features.json")
+    else:
+        PANEL_CSV              = PANEL_CSV or "data/panel.csv"
+        OUTPUT_DIR             = OUTPUT_DIR or "data"
+        OUTPUT_PREDS           = OUTPUT_PREDS or "data/panel_predictions.csv"
+        SELECTED_FEATURES_FILE = SELECTED_FEATURES_FILE or "data/selected_features.json"
+
+    if app_config:
+        GROUP_SEASONS = app_config.group_seasons or GROUP_SEASONS
+        CV_YEARS      = app_config.cv_years or CV_YEARS
+        N_TRIALS      = app_config.optuna_trials or N_TRIALS
+        TEST_YEAR     = app_config.test_year or TEST_YEAR
+
+    # Fallbacks for standalone execution
+    GROUP_SEASONS = GROUP_SEASONS or {
+        "болетовые":   list(range(6, 11)),
+        "лисичковые":  list(range(6, 12)),
+        "весенние":    [4, 5],
+        "опята":       list(range(6, 11)),
+    }
+    CV_YEARS = CV_YEARS or [2023, 2024, 2025]
+    N_TRIALS = N_TRIALS or 150
+    TEST_YEAR = TEST_YEAR or 2025
+
+    train()
+
+
 def train():
     df_full = load_panel()
 
@@ -271,4 +300,4 @@ def train():
 
 
 if __name__ == "__main__":
-    train()
+    main()

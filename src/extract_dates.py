@@ -33,8 +33,8 @@ MONTHS_RU_PATTERN = (
     r"сентябр[яеьи]?|октябр[яеьи]?|ноябр[яеьи]?|декабр[яеьи]?)"
 )
 
-INPUT_JSON = "data/raw_posts.json"
-OUTPUT_CSV = "data/posts_with_dates.csv"
+INPUT_JSON = None
+OUTPUT_CSV = None
 
 # Посты с этими словами пропускаем — не отчёты о походах
 SKIP_PATTERNS = [
@@ -277,7 +277,16 @@ def parse_date_llm(text: str, post_date: str) -> Optional[str]:
 
 # ── Основной pipeline ──────────────────────────────────────────────────────────
 
-def process_posts(use_llm: bool = False):
+def process_posts(use_llm: bool = False, city_config=None, app_config=None):
+    global INPUT_JSON, OUTPUT_CSV
+
+    if city_config:
+        INPUT_JSON = city_config.path("raw_posts.json")
+        OUTPUT_CSV = city_config.path("posts_with_dates.csv")
+    else:
+        INPUT_JSON = INPUT_JSON or "data/raw_posts.json"
+        OUTPUT_CSV = OUTPUT_CSV or "data/posts_with_dates.csv"
+
     with open(INPUT_JSON, encoding="utf-8") as f:
         posts = json.load(f)
 
@@ -326,7 +335,7 @@ def process_posts(use_llm: bool = False):
         })
 
     # Сохраняем
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT_CSV), exist_ok=True)
     with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
@@ -345,10 +354,14 @@ def process_posts(use_llm: bool = False):
     print(f"Результат: {OUTPUT_CSV}")
 
 
-if __name__ == "__main__":
+def main(city_config=None, app_config=None):
     import sys
     use_llm = "--llm" in sys.argv
     if use_llm and not os.getenv("ANTHROPIC_API_KEY"):
         print("Для LLM нужен ANTHROPIC_API_KEY в .env")
         sys.exit(1)
-    process_posts(use_llm=use_llm)
+    process_posts(use_llm=use_llm, city_config=city_config, app_config=app_config)
+
+
+if __name__ == "__main__":
+    main()

@@ -14,13 +14,13 @@ import base64
 import requests
 from tqdm import tqdm
 
-INPUT_POSTS       = "data/raw_posts.json"
-NO_MUSHROOM_IDS   = "data/no_mushroom_ids.json"
-OUTPUT_CSV        = "data/photo_species.csv"
-CHECKPOINT        = "data/photo_species_checkpoint.json"
+INPUT_POSTS       = None
+NO_MUSHROOM_IDS   = None
+OUTPUT_CSV        = None
+CHECKPOINT        = None
 
-API_URL           = "http://localhost:1234/v1/chat/completions"
-MODEL             = "google/gemma-3-12b"
+API_URL           = None
+MODEL             = None
 
 # Посты с этими словами — точно не отчёты, пропускаем фото-распознавание
 SKIP_PHOTO_RE = re.compile("|".join([
@@ -152,15 +152,35 @@ def save_checkpoint(results: dict):
         json.dump(results, f, ensure_ascii=False)
 
 
-def main():
+def main(city_config=None, app_config=None):
+    global INPUT_POSTS, NO_MUSHROOM_IDS, OUTPUT_CSV, CHECKPOINT, API_URL, MODEL
+
+    if city_config:
+        INPUT_POSTS     = city_config.path("raw_posts.json")
+        NO_MUSHROOM_IDS = city_config.path("no_mushroom_ids.json")
+        OUTPUT_CSV      = city_config.path("photo_species.csv")
+        CHECKPOINT      = city_config.path("photo_species_checkpoint.json")
+    else:
+        INPUT_POSTS     = INPUT_POSTS or "data/raw_posts.json"
+        NO_MUSHROOM_IDS = NO_MUSHROOM_IDS or "data/no_mushroom_ids.json"
+        OUTPUT_CSV      = OUTPUT_CSV or "data/photo_species.csv"
+        CHECKPOINT      = CHECKPOINT or "data/photo_species_checkpoint.json"
+
+    if app_config:
+        API_URL = app_config.lm_studio_url
+        MODEL   = app_config.lm_studio_model
+    else:
+        API_URL = API_URL or "http://localhost:1234/v1/chat/completions"
+        MODEL   = MODEL or "google/gemma-3-12b"
+
     # Загружаем посты
     with open(INPUT_POSTS, encoding="utf-8") as f:
         posts = json.load(f)
 
     # Загружаем ID постов где модель не нашла грибов (из прошлых прогонов)
     no_mushroom_ids = set()
-    if os.path.exists("data/no_mushroom_ids.json"):
-        with open("data/no_mushroom_ids.json", encoding="utf-8") as f:
+    if os.path.exists(NO_MUSHROOM_IDS):
+        with open(NO_MUSHROOM_IDS, encoding="utf-8") as f:
             no_mushroom_ids = set(json.load(f))
         print(f"Постов без грибов (из прошлых прогонов): {len(no_mushroom_ids)}")
 
@@ -226,7 +246,8 @@ def main():
 
     # Проверяем LM Studio
     try:
-        requests.get("http://localhost:1234/v1/models", timeout=5)
+        base_url = API_URL.rsplit("/chat/completions", 1)[0]
+        requests.get(f"{base_url}/models", timeout=5)
     except Exception:
         print("LM Studio не запущена! Запусти сервер в LM Studio.")
         return
@@ -325,7 +346,7 @@ def main():
 def save_results(results: dict):
     """Сохраняет финальный CSV."""
     import csv
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT_CSV), exist_ok=True)
 
     rows = []
     species_count = {}

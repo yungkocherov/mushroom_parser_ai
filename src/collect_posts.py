@@ -1,6 +1,6 @@
 """
-Сбор постов из группы ВК grib_spb через VK API.
-Сохраняет сырые данные в data/raw_posts.json и data/raw_posts.csv
+Сбор постов из группы ВК через VK API.
+Сохраняет сырые данные в data/{city}/raw_posts.json
 """
 
 import os
@@ -16,16 +16,17 @@ load_dotenv()
 
 VK_TOKEN = os.getenv("VK_TOKEN")
 API_VERSION = "5.131"
-GROUP_DOMAIN = "grib_spb"
-BATCH_SIZE = 100          # макс. постов за один запрос
-DELAY = 0.35              # секунд между запросами (лимит VK: 3 req/s)
-YEARS_BACK = 8            # глубина сбора (с 2018)
+BATCH_SIZE = 100
+DELAY = 0.35
+CHECKPOINT_EVERY = 500
 
-OUTPUT_DIR = "data"
-OUTPUT_JSON = os.path.join(OUTPUT_DIR, "raw_posts.json")
-OUTPUT_CSV = os.path.join(OUTPUT_DIR, "raw_posts.csv")
-CHECKPOINT_FILE = os.path.join(OUTPUT_DIR, "checkpoint.json")
-CHECKPOINT_EVERY = 500  # сохранять прогресс каждые N постов
+# Эти переменные устанавливаются в main() из CityConfig
+GROUP_DOMAIN = None
+YEARS_BACK = None
+OUTPUT_DIR = None
+OUTPUT_JSON = None
+OUTPUT_CSV = None
+CHECKPOINT_FILE = None
 
 
 def vk_request(method: str, params: dict, retries: int = 5) -> dict:
@@ -173,7 +174,25 @@ def save_posts(posts: list[dict]):
         print(f"CSV сохранён: {OUTPUT_CSV}")
 
 
-def main():
+def main(city_config=None, app_config=None):
+    global GROUP_DOMAIN, YEARS_BACK, OUTPUT_DIR, OUTPUT_JSON, OUTPUT_CSV, CHECKPOINT_FILE
+
+    if city_config:
+        GROUP_DOMAIN = city_config.vk_group
+        YEARS_BACK = city_config.years_back
+        OUTPUT_DIR = str(city_config.data_dir)
+        OUTPUT_JSON = city_config.path("raw_posts.json")
+        OUTPUT_CSV = city_config.path("raw_posts.csv")
+        CHECKPOINT_FILE = city_config.path("checkpoint.json")
+    else:
+        # Fallback для автономного запуска
+        GROUP_DOMAIN = GROUP_DOMAIN or "grib_spb"
+        YEARS_BACK = YEARS_BACK or 8
+        OUTPUT_DIR = OUTPUT_DIR or "data"
+        OUTPUT_JSON = OUTPUT_JSON or os.path.join(OUTPUT_DIR, "raw_posts.json")
+        OUTPUT_CSV = OUTPUT_CSV or os.path.join(OUTPUT_DIR, "raw_posts.csv")
+        CHECKPOINT_FILE = CHECKPOINT_FILE or os.path.join(OUTPUT_DIR, "checkpoint.json")
+
     if not VK_TOKEN:
         raise EnvironmentError("VK_TOKEN не найден — проверь файл .env")
 
@@ -181,7 +200,7 @@ def main():
         year=datetime.now().year - YEARS_BACK
     )
     cutoff_ts = int(cutoff_dt.timestamp())
-    print(f"Собираем посты с {cutoff_dt.strftime('%Y-%m-%d')} по сегодня")
+    print(f"[{GROUP_DOMAIN}] Собираем посты с {cutoff_dt.strftime('%Y-%m-%d')} по сегодня")
 
     posts = fetch_all_posts(cutoff_ts)
     print(f"\nСобрано постов в диапазоне дат: {len(posts)}")

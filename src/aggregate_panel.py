@@ -16,10 +16,11 @@ import os
 import pandas as pd
 import numpy as np
 
-INPUT_POSTS    = "data/posts_with_dates.csv"
-INPUT_PHOTOS   = "data/photo_species.csv"
-INPUT_WEATHER  = "data/weather_features.csv"
-OUTPUT_PANEL   = "data/panel.csv"
+INPUT_POSTS    = None
+INPUT_PHOTOS   = None
+INPUT_WEATHER  = None
+INPUT_DAILY    = None
+OUTPUT_PANEL   = None
 
 # Маппинг сырых ответов модели → 4 целевые группы
 # Модель отвечает: chanterelle, bolete, morel, honey_fungus, other, none
@@ -101,7 +102,7 @@ def build_panel(photos: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Нормализация по аудитории (из daily_counts.csv)
-    daily_counts = pd.read_csv("data/daily_counts.csv", parse_dates=["date"])
+    daily_counts = pd.read_csv(INPUT_DAILY, parse_dates=["date"])
     if "audience_scale" in daily_counts.columns:
         scale_map = daily_counts.set_index("date")["audience_scale"].to_dict()
         daily_species["audience_scale"] = daily_species["date"].map(scale_map).fillna(1.0).clip(lower=0.5)
@@ -188,7 +189,22 @@ def add_weather(panel: pd.DataFrame) -> pd.DataFrame:
     return panel
 
 
-def main():
+def main(city_config=None, app_config=None):
+    global INPUT_POSTS, INPUT_PHOTOS, INPUT_WEATHER, INPUT_DAILY, OUTPUT_PANEL
+
+    if city_config:
+        INPUT_POSTS   = city_config.path("posts_with_dates.csv")
+        INPUT_PHOTOS  = city_config.path("photo_species.csv")
+        INPUT_WEATHER = city_config.path("weather_features.csv")
+        INPUT_DAILY   = city_config.path("daily_counts.csv")
+        OUTPUT_PANEL  = city_config.path("panel.csv")
+    else:
+        INPUT_POSTS   = INPUT_POSTS or "data/posts_with_dates.csv"
+        INPUT_PHOTOS  = INPUT_PHOTOS or "data/photo_species.csv"
+        INPUT_WEATHER = INPUT_WEATHER or "data/weather_features.csv"
+        INPUT_DAILY   = INPUT_DAILY or "data/daily_counts.csv"
+        OUTPUT_PANEL  = OUTPUT_PANEL or "data/panel.csv"
+
     if not os.path.exists(INPUT_PHOTOS):
         print(f"Файл {INPUT_PHOTOS} не найден. Сначала запусти: python classify_photos.py")
         return
@@ -219,10 +235,11 @@ def main():
     # Фильтруем с 2018 года
     panel = panel[panel["date"].dt.year >= 2018].reset_index(drop=True)
 
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT_PANEL), exist_ok=True)
     panel.to_csv(OUTPUT_PANEL, index=False)
     print(f"\nСохранено: {OUTPUT_PANEL} ({len(panel)} строк, {len(panel.columns)} колонок)")
 
 
 if __name__ == "__main__":
     main()
+

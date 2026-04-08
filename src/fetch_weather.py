@@ -1,9 +1,9 @@
 """
 Загрузка сырых погодных данных из Open-Meteo Archive API.
-Сохраняет только сырые данные в data/weather_raw.csv.
+Сохраняет в data/{city}/weather_raw.csv.
 Повторный запуск докачивает только отсутствующие даты.
 
-Запуск: python fetch_weather.py
+Запуск: python run_pipeline.py --city spb --step weather
 """
 
 import os
@@ -12,9 +12,10 @@ import requests
 import pandas as pd
 from datetime import date, timedelta
 
-LAT = 59.9343
-LON = 30.3351
-OUTPUT_RAW = "data/weather_raw.csv"
+# Устанавливаются в main() из CityConfig
+LAT = None
+LON = None
+OUTPUT_RAW = None
 START_DATE = "2018-01-01"
 END_DATE = (date.today() - timedelta(days=1)).isoformat()
 
@@ -105,8 +106,19 @@ def fetch_hourly(start: str, end: str) -> pd.DataFrame:
     return df
 
 
-def main():
-    os.makedirs("data", exist_ok=True)
+def main(city_config=None, app_config=None):
+    global LAT, LON, OUTPUT_RAW
+
+    if city_config:
+        LAT = city_config.lat
+        LON = city_config.lon
+        OUTPUT_RAW = city_config.path("weather_raw.csv")
+    else:
+        LAT = LAT or 59.9343
+        LON = LON or 30.3351
+        OUTPUT_RAW = OUTPUT_RAW or "data/weather_raw.csv"
+
+    os.makedirs(os.path.dirname(OUTPUT_RAW), exist_ok=True)
 
     # Определяем какие даты уже есть
     if os.path.exists(OUTPUT_RAW):

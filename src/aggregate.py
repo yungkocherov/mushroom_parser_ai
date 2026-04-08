@@ -7,11 +7,20 @@
 import pandas as pd
 import os
 
-INPUT_CSV = "data/posts_with_dates.csv"
-OUTPUT_CSV = "data/daily_counts.csv"
+INPUT_CSV = None
+OUTPUT_CSV = None
 
 
-def aggregate():
+def aggregate(city_config=None, app_config=None):
+    global INPUT_CSV, OUTPUT_CSV
+
+    if city_config:
+        INPUT_CSV  = city_config.path("posts_with_dates.csv")
+        OUTPUT_CSV = city_config.path("daily_counts.csv")
+    else:
+        INPUT_CSV  = INPUT_CSV or "data/posts_with_dates.csv"
+        OUTPUT_CSV = OUTPUT_CSV or "data/daily_counts.csv"
+
     df = pd.read_csv(INPUT_CSV, parse_dates=["date_posted", "foray_date"])
 
     total = len(df)
@@ -114,7 +123,7 @@ def aggregate():
     daily["day_of_year"] = daily["date"].dt.day_of_year
     daily["weekday"] = daily["date"].dt.weekday   # 0=пн, 6=вс
 
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT_CSV), exist_ok=True)
     daily.to_csv(OUTPUT_CSV, index=False)
 
     print(f"\nПервые 10 дней с наибольшим количеством отчётов:")
@@ -127,5 +136,9 @@ def aggregate():
     print(yearly.to_string(index=False))
 
 
+def main(city_config=None, app_config=None):
+    aggregate(city_config=city_config, app_config=app_config)
+
+
 if __name__ == "__main__":
-    aggregate()
+    main()
